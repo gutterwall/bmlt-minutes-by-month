@@ -1,9 +1,9 @@
 <?php
 /**
  * Plugin Name: BMLT Minutes by Month
- * Description: Adds the [bmlt_minutes_by_month] shortcode: BMLT Minutes listed by committee, then by year and month.
+ * Description: Adds the [bmlt_minutes_by_month] shortcode (BMLT Minutes listed by committee, then by year and month) and [bmlt_minutes_latest] (a committee's newest minutes, shown whole in the page).
  * Plugin URI: https://github.com/gutterwall/bmlt-minutes-by-month
- * Version: 1.1.0
+ * Version: 1.2.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: bmlt-minutes
@@ -11,7 +11,7 @@
  * License: GPL-2.0-or-later
  * Text Domain: bmlt-minutes-by-month
  *
- * @version 1.1.0
+ * @version 1.2.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -28,7 +28,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class BMLT_Minutes_By_Month {
 
-	public const VERSION   = '1.1.0';
+	public const VERSION   = '1.2.0';
+	public const FILE      = __FILE__;
 	public const SHORTCODE = 'bmlt_minutes_by_month';
 	public const STYLE     = 'bmlt-minutes-by-month';
 	public const SCRIPT    = 'bmlt-minutes-by-month';
@@ -544,4 +545,8 @@ final class BMLT_Minutes_By_Month {
 	}
 }
 
+require_once __DIR__ . '/includes/class-bmlt-minutes-by-month-document-html.php';
+require_once __DIR__ . '/includes/class-bmlt-minutes-by-month-latest.php';
+
 BMLT_Minutes_By_Month::init();
+BMLT_Minutes_By_Month_Latest::init();

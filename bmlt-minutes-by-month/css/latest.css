@@ -1,0 +1,194 @@
+/* [bmlt_minutes_latest]: the newest minutes shown whole. Converted documents use .bmbm-doc; PDFs .bmbm-latest__page. */
+
+.bmbm-latest__meta {
+	display: flex;
+	flex-wrap: wrap;
+	gap: 0.25em 1em;
+	align-items: baseline;
+	margin: 0 0 1em;
+	font-size: 0.9em;
+	color: #555;
+}
+
+.bmbm-latest__download {
+	font-weight: 600;
+}
+
+.bmbm-latest__loading,
+.bmbm-latest__error,
+.bmbm-latest__none,
+.bmbm-latest__elsewhere {
+	padding: 0.75em 1em;
+	border-left: 4px solid #c3c4c7;
+	background: #f6f7f7;
+}
+
+.bmbm-latest__error {
+	border-left-color: #dba617;
+}
+
+.bmbm-latest__embed {
+	display: block;
+	width: 100%;
+	height: 80vh;
+	min-height: 500px;
+}
+
+/* ---- Converted documents (Word, OpenDocument, Excel, CSV, text) ---- */
+
+.bmbm-doc {
+	overflow-wrap: anywhere;
+}
+
+.bmbm-doc__center {
+	text-align: center;
+}
+
+.bmbm-doc__right {
+	text-align: right;
+}
+
+.bmbm-doc__table {
+	overflow-x: auto;
+	margin: 0 0 1.25em;
+}
+
+.bmbm-doc table {
+	border-collapse: collapse;
+	width: auto;
+	min-width: 50%;
+	font-size: 0.95em;
+}
+
+.bmbm-doc caption {
+	caption-side: top;
+	text-align: left;
+	font-weight: 600;
+	padding: 0.25em 0;
+}
+
+.bmbm-doc td {
+	border: 1px solid #dcdcde;
+	padding: 0.3em 0.6em;
+	vertical-align: top;
+	overflow-wrap: normal;
+}
+
+.bmbm-doc td p {
+	margin: 0 0 0.4em;
+}
+
+/* ---- PDFs, page by page ---- */
+
+.bmbm-latest__pages {
+	display: flex;
+	flex-direction: column;
+	gap: 16px;
+}
+
+.bmbm-latest__page {
+	position: relative;
+	width: 100%;
+	overflow: hidden;
+	background: #fff;
+	box-shadow: 0 0 0 1px #dcdcde, 0 2px 6px rgba(0, 0, 0, 0.08);
+	--scale-round-x: 1px;
+	--scale-round-y: 1px;
+}
+
+.bmbm-latest__page canvas {
+	position: absolute;
+	inset: 0;
+	width: 100%;
+	height: 100%;
+}
+
+.bmbm-latest__link {
+	position: absolute;
+	z-index: 2;
+}
+
+.bmbm-latest__link:focus-visible {
+	outline: 2px solid #2271b1;
+}
+
+/* PDF.js text layer (from PDF.js 6.5's pdf_viewer.css, Apache-2.0): invisible text over the page, for selecting,
+   copying and Find. */
+.bmbm-latest .textLayer {
+	position: absolute;
+	text-align: initial;
+	inset: 0;
+	overflow: clip;
+	opacity: 1;
+	line-height: 1;
+	letter-spacing: normal;
+	word-spacing: normal;
+	-webkit-text-size-adjust: none;
+	text-size-adjust: none;
+	forced-color-adjust: none;
+	transform-origin: 0 0;
+	z-index: 1;
+	--min-font-size: 1;
+	--text-scale-factor: calc(var(--total-scale-factor) * var(--min-font-size));
+	--min-font-size-inv: calc(1 / var(--min-font-size));
+}
+
+.bmbm-latest .textLayer span,
+.bmbm-latest .textLayer br {
+	color: transparent;
+	position: absolute;
+	white-space: pre;
+	cursor: text;
+	transform-origin: 0% 0%;
+	-webkit-user-select: text;
+	user-select: text;
+}
+
+.bmbm-latest .textLayer > :not(.markedContent),
+.bmbm-latest .textLayer .markedContent span:not(.markedContent) {
+	z-index: 1;
+	--font-height: 0;
+	font-size: calc(var(--text-scale-factor) * var(--font-height));
+	--scale-x: 1;
+	--rotate: 0deg;
+	transform: rotate(var(--rotate)) scaleX(var(--scale-x)) scale(var(--min-font-size-inv));
+}
+
+.bmbm-latest .textLayer .markedContent {
+	display: contents;
+}
+
+.bmbm-latest .textLayer ::selection {
+	background: rgba(0, 0, 255, 0.25);
+	color: transparent;
+}
+
+.bmbm-latest .textLayer br::selection {
+	background: transparent;
+}
+
+.bmbm-latest .textLayer .endOfContent {
+	display: block;
+	position: absolute;
+	inset: 100% 0 0;
+	z-index: 0;
+	cursor: default;
+	-webkit-user-select: none;
+	user-select: none;
+}
+
+.bmbm-latest .textLayer.selecting .endOfContent {
+	top: 0;
+}
+
+@media print {
+	.bmbm-latest__page {
+		break-inside: avoid;
+		box-shadow: none;
+	}
+}
+
+.bmbm-doc .bmbm-doc__nest,
+.bmbm-doc li.bmbm-doc__nest {
+	list-style: none;
+}

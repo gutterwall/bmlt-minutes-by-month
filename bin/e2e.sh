@@ -5,7 +5,8 @@
 #     ├─ Apache + PHP-FPM
 #     └─ nginx + PHP-FPM
 #   minutes with uploaded PDF, DOCX and CSV files, a Google Docs link and password-protected minutes, in two committees
-#   and several months, on a published page with [bmlt_minutes_by_month show_excerpt="true"] (and one without the flag)
+#   and several months, on a published page with [bmlt_minutes_by_month show_excerpt="true"] (and one without the flag),
+#   and [bmlt_minutes_latest] pages: a PDF drawn with PDF.js, a Word file as HTML, password-protected minutes
 #   headless Chrome as a visitor, on a desktop and on a phone (bin/browser-check.py)
 #
 # Then the page's HTML (no protected document's address) and uninstall (nothing left behind).
@@ -249,9 +250,16 @@ minutes "ASC January 2025" 2025-01-12 area-service-committee asc-2025-01.pdf >/d
 minutes "ASC November 2024" 2024-11-10 area-service-committee asc-2024-11.pdf >/dev/null
 minutes "Motions November 2024" 2024-11-10 area-service-committee asc-2024-11-motions.csv >/dev/null
 minutes "Policy February 2025" 2025-02-02 policy policy-2025-02.pdf >/dev/null
+"${WP[@]}" term create bmlt_committee Treasury --slug=treasury >/dev/null
+cp "$F/asc-2025-03-treasurer.docx" "$F/treasury-2025-04.docx"
+minutes "Treasurer April 2025" 2025-04-13 treasury treasury-2025-04.docx >/dev/null
+latest_page() { "${WP[@]}" post create --post_type=page --post_status=publish --post_title="$1" --post_name="$1" --post_content="<!-- wp:shortcode -->[bmlt_minutes_latest committee=\"$2\"]<!-- /wp:shortcode -->" >/dev/null; }
+latest_page latest-policy policy
+latest_page latest-treasury treasury
+latest_page latest-asc area-service-committee
 "${WP[@]}" post create --post_type=page --post_status=publish --post_title='Minutes by Month' --post_name=minutes-by-month --post_content='<!-- wp:shortcode -->[bmlt_minutes_by_month show_excerpt="true"]<!-- /wp:shortcode -->' >/dev/null
 "${WP[@]}" post create --post_type=page --post_status=publish --post_title='Minutes as links' --post_name=minutes-as-links --post_content='<!-- wp:shortcode -->[bmlt_minutes_by_month]<!-- /wp:shortcode -->' >/dev/null
-pass "8 minutes (PDF, DOCX, CSV, Google Docs link, password-protected PDF) in two committees; page /minutes-by-month/"
+pass "9 minutes (PDF, DOCX, CSV, Google Docs link, password-protected PDF) in three committees; pages /minutes-by-month/, /latest-policy/, /latest-treasury/, /latest-asc/"
 
 section "The page's HTML (Apache)"
 HTML=$(curl -fsS "$SITE_A/minutes-by-month/")
@@ -269,6 +277,26 @@ grep -q 'bmlt-minutes__item' <<<"$LINKS" || fail "no links without show_excerpt=
 grep -q "$PROTECTED_FILE" <<<"$LINKS" && fail "the protected minutes' document ($PROTECTED_FILE) is on the links page"
 pass "without show_excerpt=\"true\": every document a link, no File blocks"
 
+section "[bmlt_minutes_latest] HTML (Apache)"
+LATEST=$(curl -fsS "$SITE_A/latest-policy/")
+grep -q 'class="bmbm-latest__pdf" data-bmbm-pdf="[^"]*policy-2025-02[^"]*\.pdf"' <<<"$LATEST" || fail "the policy page has no PDF viewer"
+grep -q 'js/latest\.js' <<<"$LATEST" || fail "the policy page does not load js/latest.js"
+for f in pdf.min.js pdf.worker.min.js wasm/openjpeg.wasm standard_fonts/LiberationSans-Regular.ttf; do
+	for site in "$SITE_A" "$SITE_N"; do
+		type=$(curl -fsS -o /dev/null -w '%{content_type}' "$site/wp-content/plugins/$PL/pdfjs/$f") || fail "pdfjs/$f does not load from $site"
+		case "$f" in *.js) grep -qi javascript <<<"$type" || fail "pdfjs/$f is sent as $type by $site, not JavaScript" ;; esac
+	done
+done
+grep -q '<div class="bmbm-latest__document bmbm-doc bmbm-doc--docx"><p>Treasurer report</p></div>' <<<"$(curl -fsS "$SITE_A/latest-treasury/")" || fail "the Word document is not shown as HTML"
+ASC_LATEST=$(curl -fsS "$SITE_A/latest-asc/")
+grep -q 'post_password' <<<"$ASC_LATEST" || fail "protected minutes: no password form"
+grep -q "$PROTECTED_FILE" <<<"$ASC_LATEST" && fail "protected minutes: the document's address is on the page"
+pass "PDF viewer markup, PDF.js served as JavaScript by Apache and nginx, the Word file as HTML, a password form for protected minutes"
+
+section "Browser: [bmlt_minutes_latest] (Apache desktop, nginx phone)"
+python3 "$ROOT/bin/latest-check.py" "$SITE_A/latest-policy/" "$SITE_A/latest-treasury/" --shot "$W/logs/latest-desktop-apache.png"
+python3 "$ROOT/bin/latest-check.py" "$SITE_N/latest-policy/" "$SITE_N/latest-treasury/" --phone --shot "$W/logs/latest-phone-nginx.png"
+
 section "Browser: desktop (Apache)"
 python3 "$ROOT/bin/browser-check.py" "$SITE_A/minutes-by-month/" --shot "$W/logs/desktop-apache.png"
 section "Browser: desktop (nginx)"
@@ -277,12 +305,13 @@ section "Browser: phone (nginx)"
 python3 "$ROOT/bin/browser-check.py" "$SITE_N/minutes-by-month/" --phone --shot "$W/logs/phone-nginx.png"
 
 section "Uninstall"
+[ -n "$("${WP[@]}" db query "SELECT option_name FROM wp_options WHERE option_name LIKE '\\_transient\\_bmbm\\_doc\\_%'" --skip-column-names)" ] || fail "the Word document's HTML was not cached"
 "${WP[@]}" plugin deactivate $PL
 "${WP[@]}" plugin uninstall $PL
 left=$("${WP[@]}" db query "SELECT option_name FROM wp_options WHERE option_name LIKE '%bmbm%' OR option_name LIKE '%by_month%' OR option_name LIKE '%by-month%'" --skip-column-names)
 [ -z "$left" ] || fail "left behind: $left"
 [ ! -e "$W/wp/wp-content/plugins/$PL" ] || fail "plugin folder left behind"
-[ "$("${WP[@]}" post list --post_type=bmlt_minutes --format=count)" = 8 ] || fail "minutes changed by uninstall"
+[ "$("${WP[@]}" post list --post_type=bmlt_minutes --format=count)" = 9 ] || fail "minutes changed by uninstall"
 pass "nothing left behind; the minutes are untouched"
 grep -q 'bmlt_minutes_by_month' <<<"$(curl -fsS "$SITE_A/minutes-by-month/")" && pass "the page shows the bare shortcode once the plugin is gone (WordPress's usual behaviour)" || true
 

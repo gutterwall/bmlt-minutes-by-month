@@ -1,6 +1,6 @@
 # BMLT Minutes by Month
 
-A companion plugin for [BMLT Minutes](https://wordpress.org/plugins/bmlt-minutes/). The `[bmlt_minutes_by_month]` shortcode lists minutes by committee, then by year (a collapsible section) and month. The attributes are documented in [readme.txt](bmlt-minutes-by-month/readme.txt).
+A companion plugin for [BMLT Minutes](https://wordpress.org/plugins/bmlt-minutes/). The `[bmlt_minutes_by_month]` shortcode lists minutes by committee, then by year (a collapsible section) and month. `[bmlt_minutes_latest]` shows a committee's newest minutes whole in the page: PDFs drawn with PDF.js (in `bmlt-minutes-by-month/pdfjs/`, Apache-2.0), Word, OpenDocument, Excel, CSV and text files converted to HTML. The attributes are documented in [readme.txt](bmlt-minutes-by-month/readme.txt).
 
 ## Development
 
@@ -12,5 +12,6 @@ WP_TESTS_DIR=/tmp/wordpress-tests/tests-lib vendor/bin/phpunit -c tests/wordpres
 WP_MULTISITE=1 WP_TESTS_DIR=… vendor/bin/phpunit -c tests/wordpress/phpunit.xml.dist
 vendor/bin/phpcs && vendor/bin/phpstan analyse --memory-limit=2G
 bin/browser-check.py <site> <page url> <user> <password> [shot.png]   # headless Chrome: open month, lazy PDFs
+bin/latest-check.py <PDF page> <Word page> [--phone]   # headless Chrome: [bmlt_minutes_latest] draws the PDF
 bin/build.sh                                    # dist/bmlt-minutes-by-month-<version>.zip from the last commit
 ```
