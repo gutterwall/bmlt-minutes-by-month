@@ -3,8 +3,8 @@
  * download every PDF with the page. Without this script the File block's link and Download button still work.
  *
  * Browsers (Chrome among them) do not load an <object> whose address is set after it was created, so each preview is
- * replaced by a copy that has the address. The copy keeps the "hidden" state WordPress's File block script gave the
- * original (hidden where PDFs cannot be shown, such as on phones).
+ * replaced by a copy that has the address. Where WordPress's File block script hides previews (browsers that cannot
+ * show PDFs, such as on phones), nothing is downloaded.
  */
 document.addEventListener(
 	'toggle',
@@ -14,6 +14,9 @@ document.addEventListener(
 			return;
 		}
 		month.querySelectorAll( 'object[data-bmbm-src]' ).forEach( function ( embed ) {
+			if ( embed.hidden ) {
+				return; // No preview here (a phone, for one): the link and Download button are enough.
+			}
 			var copy = embed.cloneNode( true );
 			copy.setAttribute( 'data', embed.getAttribute( 'data-bmbm-src' ) );
 			copy.removeAttribute( 'data-bmbm-src' );
