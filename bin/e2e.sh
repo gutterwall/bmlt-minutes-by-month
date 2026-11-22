@@ -266,11 +266,11 @@ HTML=$(curl -fsS "$SITE_A/minutes-by-month/")
 PROTECTED_FILE=$("${WP[@]}" eval "echo basename( get_attached_file( (int) get_post_meta( $PROTECTED, '_bmlt_minutes_attachment_id', true ) ) );")
 grep -q "$PROTECTED_FILE" <<<"$HTML" && fail "the protected minutes' document ($PROTECTED_FILE) is on the page"
 grep -q 'bmbm__month-title">March</' <<<"$HTML" || fail "no March section"
-[ "$(grep -o '<details class="bmbm__month" open>' <<<"$HTML" | wc -l)" = 2 ] || fail "open months: $(grep -o '<details class="bmbm__month"[^>]*>' <<<"$HTML")"
+[ "$(grep -o '<details class="bmbm__month" open>' <<<"$HTML" | wc -l)" = 3 ] || fail "open months: $(grep -o '<details class="bmbm__month"[^>]*>' <<<"$HTML")"
 grep -q 'bmbm__doc--docx' <<<"$HTML" || fail "the Word document is not a File block"
 grep -q 'bmbm__doc--csv' <<<"$HTML" || fail "the CSV file is not a File block"
 grep -q 'wp-block-file' <<<"$HTML" && grep -q 'view.js' <<<"$HTML" || fail "File block or the plugin's script missing"
-pass "two open months (one per committee); DOCX and CSV as File blocks; the protected document's address is not on the page"
+pass "three open months (one per committee); DOCX and CSV as File blocks; the protected document's address is not on the page"
 LINKS=$(curl -fsS "$SITE_A/minutes-as-links/")
 grep -q 'wp-block-file' <<<"$LINKS" && fail "File blocks without show_excerpt=\"true\""
 grep -q 'bmlt-minutes__item' <<<"$LINKS" || fail "no links without show_excerpt=\"true\""
