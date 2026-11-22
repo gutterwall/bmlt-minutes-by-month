@@ -16,10 +16,15 @@ Lists BMLT Minutes by committee, then by year and month.
 A companion to [BMLT Minutes](https://wordpress.org/plugins/bmlt-minutes/). Its `[bmlt_minutes_by_month]` shortcode shows every committee's minutes as an archive:
 
 * a heading for each committee (alphabetical; minutes without a committee come last, under "Uncategorized")
-* a collapsible section for each year, showing how many documents it holds (the newest year is open)
-* the months of that year, each with its documents
+* a heading for each year
+* each month rolled up into a collapsible section showing how many documents it holds; only the committee's newest month starts open
+* in an open month, each document as WordPress's File block: its title linking to the file and a Download button, and for a PDF a 500 pixel high preview
 
-Minutes are filed under the month they were posted, or under their meeting date with `date="meeting"`. Minutes filed under two committees appear under both. Password-protected minutes link to their own page, where WordPress asks for the password, and never show the document's address. Items look the same as in BMLT Minutes' own `[bmlt_minutes]` list.
+The File block previews PDFs only: Word, Excel, PowerPoint, OpenDocument, text and CSV files get the link and Download button, since browsers cannot show them in the page. Phones and other browsers without a PDF viewer get the link and button too (WordPress hides the preview there). The PDFs of a closed month are downloaded only when the month is opened, so a long archive stays quick to load.
+
+Google Docs and other web links, and password-protected minutes, are listed as links in the style of BMLT Minutes' own `[bmlt_minutes]` list. Password-protected minutes link to their own page, where WordPress asks for the password, and never show the document's address.
+
+Minutes are filed under the month they were posted, or under their meeting date with `date="meeting"`. Minutes filed under two committees appear under both.
 
 = Shortcode attributes =
 
@@ -27,7 +32,9 @@ Minutes are filed under the month they were posted, or under their meeting date 
 * `date`: `posted` (default, the month the minutes were posted) or `meeting` (the meeting date; minutes without one use the month they were posted).
 * `year`: only this year, for example `2026`.
 * `order`: `desc` (newest first) or `asc`. Default: BMLT Minutes' "Default Sort Order" setting.
-* `open`: which years start expanded: `latest` (default, the newest year of each committee), `all` or `none`.
+* `open`: which months start open: `latest` (default, the newest month of each committee), `all` or `none`.
+* `preview_height`: the height of PDF previews in pixels (default `500`); `0` shows no previews.
+* `display`: `file` (default, File blocks) or `list` (every document as a link, like `[bmlt_minutes]`).
 * `heading_level`: the committee heading level, `2` to `4` (default `3`). Years and months use the next two levels.
 * `show_date`: `true` (default) shows each document's meeting date; `false` hides it.
 
@@ -37,7 +44,7 @@ Minutes are filed under the month they were posted, or under their meeting date 
 
 `[bmlt_minutes_by_month committee="richmond-area" date="meeting"]`
 
-`[bmlt_minutes_by_month year="2026" open="all" heading_level="2"]`
+`[bmlt_minutes_by_month year="2026" open="all" heading_level="2" preview_height="700"]`
 
 == Installation ==
 
@@ -58,4 +65,4 @@ No. It reads BMLT Minutes' posts and adds no settings, tables or files.
 == Changelog ==
 
 = 1.0.0 =
-* First release: the `[bmlt_minutes_by_month]` shortcode.
+* First release: the `[bmlt_minutes_by_month]` shortcode, with documents as File blocks and PDF previews.

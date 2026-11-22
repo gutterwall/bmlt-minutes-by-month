@@ -1,35 +1,41 @@
-/* [bmlt_minutes_by_month]: committee → year (collapsible) → month. Items use BMLT Minutes' own styles. */
+/* [bmlt_minutes_by_month]: committee → year → month (collapsible) → File blocks. List items use BMLT Minutes' styles. */
 
 .bmbm__committee + .bmbm__committee {
 	margin-top: 2em;
 }
 
-.bmbm__year {
+.bmbm__year-title {
+	margin: 1em 0 0.5em;
+	font-size: 1.05em;
+}
+
+.bmbm__month {
 	margin: 0.5em 0;
 	border: 1px solid #e5e5e5;
 	border-radius: 4px;
 	padding: 0 0.75em;
 }
 
-.bmbm__year[open] {
-	padding-bottom: 0.5em;
+.bmbm__month[open] {
+	padding-bottom: 0.75em;
 }
 
-.bmbm__year-summary {
+.bmbm__month-summary {
 	cursor: pointer;
 	padding: 0.5em 0;
 	list-style-position: inside;
 }
 
-.bmbm__year-summary:focus-visible {
+.bmbm__month-summary:focus-visible {
 	outline: 2px solid #2271b1;
 	outline-offset: 2px;
 }
 
-.bmbm__year-title {
+.bmbm__month-title {
 	display: inline;
 	margin: 0;
-	font-size: 1.05em;
+	font-size: 1em;
+	font-weight: 600;
 }
 
 .bmbm__count {
@@ -38,11 +44,22 @@
 	color: #777;
 }
 
-.bmbm__month {
-	margin: 0.75em 0 0.25em;
-	font-size: 0.95em;
-	font-weight: 600;
-	color: #444;
+.bmbm__doc {
+	margin: 0.75em 0 1.25em;
+}
+
+.bmbm__doc .wp-block-file {
+	margin-bottom: 0;
+}
+
+.bmbm__doc-date {
+	margin: 0 0 0.25em;
+	font-size: 0.85em;
+	color: #777;
+}
+
+.bmbm__list {
+	margin: 0.5em 0;
 }
 
 .bmbm--missing {

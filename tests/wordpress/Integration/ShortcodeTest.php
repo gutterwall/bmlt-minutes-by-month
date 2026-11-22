@@ -24,6 +24,7 @@ class ShortcodeTest extends WP_UnitTestCase {
 	public function set_up() {
 		parent::set_up();
 		delete_option( 'bmlt_minutes_sort_order' );
+		wp_dequeue_script( 'bmlt-minutes-by-month' );
 	}
 
 	/**
@@ -56,33 +57,49 @@ class ShortcodeTest extends WP_UnitTestCase {
 		return do_shortcode( '[bmlt_minutes_by_month' . ( '' !== $atts ? ' ' . $atts : '' ) . ']' );
 	}
 
-	/**
-	 * Committee → year → month → titles, read back from the HTML.
-	 *
-	 * @return array<string, array<string, array<string, string[]>>>
-	 */
-	private function outline( string $html ): array {
+	private function xpath( string $html ): DOMXPath {
 		$doc = new DOMDocument();
 		libxml_use_internal_errors( true );
 		$doc->loadHTML( '<?xml encoding="utf-8"?>' . $html );
 		libxml_clear_errors();
-		$xp  = new DOMXPath( $doc );
+		return new DOMXPath( $doc );
+	}
+
+	/**
+	 * Committee → year → month → document titles (File blocks and list links, in page order), read back from the HTML.
+	 *
+	 * @return array<string, array<string, array<string, string[]>>>
+	 */
+	private function outline( string $html ): array {
+		$xp  = $this->xpath( $html );
 		$out = array();
 		foreach ( $xp->query( '//section[contains(@class,"bmbm__committee")]' ) as $section ) {
 			$committee = trim( $xp->query( './*[contains(@class,"bmbm__committee-title")]', $section )->item( 0 )->textContent );
-			foreach ( $xp->query( './details', $section ) as $details ) {
-				$year  = trim( $xp->query( './/*[contains(@class,"bmbm__year-title")]', $details )->item( 0 )->textContent );
-				$month = '';
-				foreach ( $xp->query( './*', $details ) as $node ) {
-					if ( str_contains( (string) $node->getAttribute( 'class' ), 'bmbm__month' ) ) {
-						$month = trim( $node->textContent );
-					} elseif ( 'ul' === $node->nodeName ) {
-						foreach ( $xp->query( './/span[@class="bmlt-minutes__title"]', $node ) as $title ) {
-							$out[ $committee ][ $year ][ $month ][] = trim( $title->textContent );
-						}
+			foreach ( $xp->query( './div[@class="bmbm__year"]', $section ) as $year_div ) {
+				$year = trim( $xp->query( './*[@class="bmbm__year-title"]', $year_div )->item( 0 )->textContent );
+				foreach ( $xp->query( './details[contains(@class,"bmbm__month")]', $year_div ) as $details ) {
+					$month = trim( $xp->query( './summary/*[@class="bmbm__month-title"]', $details )->item( 0 )->textContent );
+					$out[ $committee ][ $year ][ $month ] = array();
+					foreach ( $xp->query( './/span[@class="bmlt-minutes__title"] | .//div[contains(@class,"wp-block-file")]/a[not(@download)]', $details ) as $title ) {
+						$out[ $committee ][ $year ][ $month ][] = trim( $title->textContent );
 					}
 				}
 			}
+		}
+		return $out;
+	}
+
+	/**
+	 * "Year-Month" of each month section that starts open.
+	 *
+	 * @return string[]
+	 */
+	private function open_months( string $html ): array {
+		$xp  = $this->xpath( $html );
+		$out = array();
+		foreach ( $xp->query( '//details[contains(@class,"bmbm__month")][@open]' ) as $details ) {
+			$year  = trim( $xp->query( './ancestor::div[@class="bmbm__year"]/*[@class="bmbm__year-title"]', $details )->item( 0 )->textContent );
+			$out[] = $year . '-' . trim( $xp->query( './summary/*[@class="bmbm__month-title"]', $details )->item( 0 )->textContent );
 		}
 		return $out;
 	}
@@ -211,26 +228,99 @@ class ShortcodeTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'Protected', $html );
 	}
 
-	public function test_document_link_type_and_meeting_date() {
+	public function test_files_show_as_file_blocks_and_links_stay_links() {
 		update_option( 'date_format', 'F j, Y' );
 		$this->minutes( 'Sheet', '2026-02-01 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/treasurer.xlsx', 'meeting' => '2026-01-11' ) );
-		$this->minutes( 'Google', '2026-02-02 12:00:00', array( 'policy' ), array( 'url' => 'https://docs.google.com/document/d/abc/edit' ) );
+		$this->minutes( 'Word', '2026-02-02 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/minutes.docx' ) );
+		$this->minutes( 'Google', '2026-02-03 12:00:00', array( 'policy' ), array( 'url' => 'https://docs.google.com/document/d/abc/edit' ) );
 		$html = $this->render();
+		$xp   = $this->xpath( $html );
 
-		$this->assertStringContainsString( 'href="https://example.org/treasurer.xlsx" target="_blank" rel="noopener"', $html );
-		$this->assertStringContainsString( 'dashicons-media-spreadsheet', $html );
-		$this->assertStringContainsString( '<span class="bmlt-minutes__type">XLSX</span>', $html );
-		$this->assertStringContainsString( '<span class="bmlt-minutes__date">January 11, 2026</span>', $html );
+		// Word and Excel files: the File block's link and Download button, no preview (browsers cannot show them).
+		foreach ( array( 'treasurer.xlsx' => 'Sheet', 'minutes.docx' => 'Word' ) as $file => $title ) {
+			$block = $xp->query( '//div[contains(@class,"bmbm__doc--' . pathinfo( $file, PATHINFO_EXTENSION ) . '")]/div[@class="wp-block-file"]' );
+			$this->assertSame( 1, $block->length, $file );
+			$link = $xp->query( './a[not(@download)]', $block->item( 0 ) )->item( 0 );
+			$this->assertSame( 'https://example.org/' . $file, $link->getAttribute( 'href' ) );
+			$this->assertSame( $title, $link->textContent );
+			$button = $xp->query( './a[@download]', $block->item( 0 ) )->item( 0 );
+			$this->assertSame( 'https://example.org/' . $file, $button->getAttribute( 'href' ) );
+			$this->assertSame( 'Download', $button->textContent );
+			$this->assertSame( $link->getAttribute( 'id' ), $button->getAttribute( 'aria-describedby' ) );
+			$this->assertSame( 0, $xp->query( './/object', $block->item( 0 ) )->length );
+		}
+		$this->assertStringContainsString( '<p class="bmbm__doc-date">January 11, 2026</p>', $html );
+		// A Google Doc is a web page, not a file: a link as in BMLT Minutes' list.
 		$this->assertStringContainsString( 'dashicons-google', $html );
-		$this->assertStringNotContainsString( 'bmlt-minutes__date', $this->render( 'show_date="false"' ) );
+		$this->assertSame( 1, $xp->query( '//li[@class="bmlt-minutes__item"]' )->length );
+
+		$this->assertStringNotContainsString( 'bmbm__doc-date', $this->render( 'show_date="false"' ) );
+		$list = $this->render( 'display="list"' );
+		$this->assertStringNotContainsString( 'wp-block-file', $list );
+		$this->assertStringContainsString( '<span class="bmlt-minutes__type">XLSX</span>', $list );
+		$this->assertStringContainsString( '<span class="bmlt-minutes__date">January 11, 2026</span>', $list );
+	}
+
+	public function test_pdf_previews_load_in_the_open_month_and_wait_in_closed_ones() {
+		$this->minutes( 'September', '2026-09-14 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/sep.pdf' ) );
+		$this->minutes( 'August', '2026-08-09 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/aug.pdf' ) );
+		$this->minutes( 'Richmond', '2025-05-01 12:00:00', array( 'richmond' ), array( 'url' => 'https://example.org/rich.pdf' ) );
+		$html = $this->render();
+		$xp   = $this->xpath( $html );
+
+		$this->assertSame( array( '2026-September', '2025-May' ), $this->open_months( $html ), 'each committee\'s newest month (Policy, then Richmond Area)' );
+		$open = $xp->query( '//details[@open]//object' );
+		$this->assertSame( 2, $open->length );
+		foreach ( $open as $embed ) {
+			$this->assertStringStartsWith( 'https://example.org/', $embed->getAttribute( 'data' ) );
+			$this->assertSame( 'application/pdf', $embed->getAttribute( 'type' ) );
+			$this->assertSame( 'width:100%;height:500px', $embed->getAttribute( 'style' ) );
+			$this->assertStringContainsString( 'wp-block-file__embed', $embed->getAttribute( 'class' ) );
+			// WordPress rendered the block: its script hides the preview where PDFs cannot be shown (phones).
+			$this->assertTrue( $embed->hasAttribute( 'hidden' ) );
+			$this->assertSame( '!state.hasPdfPreview', $embed->getAttribute( 'data-wp-bind--hidden' ) );
+			$this->assertSame( 'core/file', $embed->parentNode->getAttribute( 'data-wp-interactive' ) );
+		}
+		$closed = $xp->query( '//details[not(@open)]//object' );
+		$this->assertSame( 1, $closed->length );
+		$this->assertFalse( $closed->item( 0 )->hasAttribute( 'data' ), 'a closed month does not download its PDFs' );
+		$this->assertSame( 'https://example.org/aug.pdf', $closed->item( 0 )->getAttribute( 'data-bmbm-src' ) );
+		$this->assertTrue( wp_script_is( 'bmlt-minutes-by-month', 'enqueued' ) );
+
+		wp_dequeue_script( 'bmlt-minutes-by-month' );
+		$all = $this->render( 'open="all"' );
+		$this->assertStringNotContainsString( 'data-bmbm-src', $all );
+		$this->assertFalse( wp_script_is( 'bmlt-minutes-by-month', 'enqueued' ), 'nothing waits, so no script' );
+
+		$this->assertStringContainsString( 'height:300px', $this->render( 'preview_height="300"' ) );
+		$this->assertStringContainsString( 'height:500px', $this->render( 'preview_height="tall"' ) );
+		$none = $this->render( 'preview_height="0"' );
+		$this->assertStringNotContainsString( '<object', $none );
+		$this->assertStringContainsString( 'wp-block-file__button', $none );
+	}
+
+	public function test_the_newest_month_opens_whichever_way_the_list_is_sorted() {
+		$this->minutes( 'Old', '2025-12-01 12:00:00', array( 'policy' ) );
+		$this->minutes( 'New', '2026-03-01 12:00:00', array( 'policy' ) );
+		$this->minutes( 'Middle', '2026-01-01 12:00:00', array( 'policy' ) );
+
+		$this->assertSame( array( '2026-March' ), $this->open_months( $this->render() ) );
+		$this->assertSame( array( '2026-March' ), $this->open_months( $this->render( 'order="asc"' ) ) );
+		$this->assertSame( array( '2025-December' ), $this->open_months( $this->render( 'year="2025"' ) ) );
+		$this->assertSame( array( '2026-January', '2026-March' ), $this->open_months( $this->render( 'order="asc" open="all" year="2026"' ) ) );
+		$this->assertSame( array(), $this->open_months( $this->render( 'open="none"' ) ) );
+		$this->assertSame( array( '2026-March' ), $this->open_months( $this->render( 'open="bogus"' ) ) );
 	}
 
 	public function test_titles_and_committee_names_are_escaped() {
-		$id = $this->minutes( 'Minutes', '2026-02-01 12:00:00', array( 'policy' ) );
+		$id  = $this->minutes( 'Minutes', '2026-02-01 12:00:00', array( 'policy' ) );
+		$pdf = $this->minutes( 'PDF', '2026-02-02 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/a.pdf' ) );
 		// Written to the database directly: WordPress filters markup out of titles and names it saves, but imported
 		// data or an administrator with unfiltered_html can still hold it.
 		global $wpdb;
 		$wpdb->update( $wpdb->posts, array( 'post_title' => '<script>alert(1)</script>Minutes' ), array( 'ID' => $id ) );
+		$wpdb->update( $wpdb->posts, array( 'post_title' => '"><script>alert(2)</script>' ), array( 'ID' => $pdf ) );
+		clean_post_cache( $pdf );
 		$wpdb->update( $wpdb->terms, array( 'name' => 'Policy <img src=x onerror=alert(1)>' ), array( 'term_id' => self::$c['policy'] ) );
 		$wpdb->update( $wpdb->postmeta, array( 'meta_value' => 'javascript:alert(1)' ), array( 'post_id' => $id, 'meta_key' => '_bmlt_minutes_url' ) );
 		wp_cache_delete( $id, 'post_meta' );
@@ -240,6 +330,11 @@ class ShortcodeTest extends WP_UnitTestCase {
 
 		$this->assertStringContainsString( '&lt;script&gt;alert(1)&lt;/script&gt;Minutes', $html );
 		$this->assertStringContainsString( 'Policy &lt;img src=x onerror=alert(1)&gt;', $html );
+		$this->assertStringContainsString( '&gt;&lt;script&gt;alert(2)&lt;/script&gt;</a>', $html, 'File block link' );
+		$this->assertStringContainsString( 'aria-label="Embed of “&gt;."', $html, 'File block preview label (tags stripped)' );
+		// An address that is not a safe URL links to the minutes' own page instead.
+		$this->assertStringContainsString( 'href="' . esc_url( get_permalink( $id ) ) . '"', $html );
+		$this->assertStringNotContainsString( 'href=""', $html );
 		$this->assertStringNotContainsString( '<script>', $html );
 		$this->assertStringNotContainsString( '<img', $html );
 		$this->assertStringNotContainsString( 'javascript:', $html );
@@ -247,23 +342,15 @@ class ShortcodeTest extends WP_UnitTestCase {
 		clean_term_cache( self::$c['policy'], 'bmlt_committee' );
 	}
 
-	public function test_open_attribute_and_heading_levels() {
+	public function test_heading_levels_and_counts() {
 		$this->minutes( 'New', '2026-02-01 12:00:00', array( 'policy' ) );
-		$this->minutes( 'Old', '2025-02-01 12:00:00', array( 'policy' ) );
-		$this->minutes( 'Richmond', '2024-02-01 12:00:00', array( 'richmond' ) );
-
-		// Newest year of each committee open.
-		$this->assertSame( 2, substr_count( $this->render(), '<details class="bmbm__year" open>' ) );
-		$this->assertSame( 3, substr_count( $this->render( 'open="all"' ), '<details class="bmbm__year" open>' ) );
-		$this->assertSame( 0, substr_count( $this->render( 'open="none"' ), ' open>' ) );
-		$this->assertSame( 2, substr_count( $this->render( 'open="bogus"' ), ' open>' ) );
+		$this->minutes( 'Newer', '2026-02-02 12:00:00', array( 'policy' ) );
 
 		$html = $this->render( 'heading_level="2"' );
 		$this->assertStringContainsString( '<h2 class="bmlt-minutes__group bmbm__committee-title">Policy</h2>', $html );
 		$this->assertStringContainsString( '<h3 class="bmbm__year-title">2026</h3>', $html );
-		$this->assertStringContainsString( '<h4 class="bmbm__month">February</h4>', $html );
+		$this->assertStringContainsString( '<h4 class="bmbm__month-title">February</h4> <span class="bmbm__count">2 documents</span>', $html );
 		$this->assertStringContainsString( '<h3 class="bmlt-minutes__group', $this->render( 'heading_level="9"' ), 'out of range: the default' );
-		$this->assertStringContainsString( '1 document</span>', $this->render() );
 	}
 
 	public function test_month_names_follow_the_site_language() {
@@ -293,6 +380,8 @@ class ShortcodeTest extends WP_UnitTestCase {
 				'open'       => 'latest',
 				'level'      => 3,
 				'show_date'  => true,
+				'display'    => 'file',
+				'preview'    => 500,
 			),
 			BMLT_Minutes_By_Month::parse_atts( '' )
 		);
