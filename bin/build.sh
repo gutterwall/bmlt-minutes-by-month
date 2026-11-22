@@ -30,7 +30,7 @@ P=bmlt-minutes-by-month
 V=$(sed -n 's/^ \* Version: *//p' "$P/$P.php")
 [ -n "$V" ] || fail "no Version in the plugin header"
 check() { [ "$2" = "$V" ] || fail "$1 says $2, the plugin header says $V"; }
-check "VERSION constant" "$(sed -n "s/^ *public const VERSION *= '\(.*\)';/\1/p" "$P/$P.php")"
+check "VERSION constant" "$(sed -n "s/^[[:space:]]*public const VERSION[[:space:]]*= '\(.*\)';/\1/p" "$P/$P.php")"
 check "readme.txt Stable tag" "$(sed -n 's/^Stable tag: *//p' "$P/readme.txt" | tr -d '[:space:]')"
 grep -q "^## $V " CHANGELOG.md || fail "CHANGELOG.md has no entry for $V"
 grep -q "^= $V =" "$P/readme.txt" || fail "readme.txt has no changelog entry for $V"
