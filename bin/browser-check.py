@@ -194,16 +194,20 @@ def main():
         if b.errors:
             fail('script errors: ' + '; '.join(b.errors))
         ok('no script errors')
+        # What the page fetched, from the browser's own resource timing (DevTools network events miss loads made by
+        # the PDF viewer).
+        fetched = lambda: b.js('performance.getEntriesByType("resource").map(e => e.name)') or []
+        loaded = fetched()
         for c in state:
             if len(c['open']) != 1:
                 fail(f"{c['committee']}: {len(c['open'])} open months")
             o = c['open'][0]
-            missing = [u for u in o['pdfs'] if u not in b.requests]
+            missing = [u for u in o['pdfs'] if u not in loaded]
             if missing:
                 fail(f"{c['committee']} {o['month']}: PDFs not loaded: {missing}")
             if o['shown'] != len(o['pdfs']):
                 fail(f"{c['committee']} {o['month']}: {o['shown']} of {len(o['pdfs'])} previews shown")
-            early = [u for u in c['closedPdfs'] if u in b.requests]
+            early = [u for u in c['closedPdfs'] if u in loaded]
             if early:
                 fail(f"{c['committee']}: closed months' PDFs downloaded with the page: {early}")
             ok(f"{c['committee']}: {o['month']} open, {o['files']} File blocks, {len(o['pdfs'])} PDF previews shown; "
@@ -219,7 +223,7 @@ def main():
         if target:
             b.wait('document.getElementById("bmbm-check").open && !document.querySelector("#bmbm-check object[data-bmbm-src]")', 10)
             time.sleep(2)
-            missing = [u for u in target if u not in b.requests]
+            missing = [u for u in target if u not in fetched()]
             if missing:
                 fail('opening a closed month did not load ' + str(missing))
             shown = b.js('[...document.querySelectorAll("#bmbm-check object.wp-block-file__embed")].filter(o => !o.hidden && o.offsetHeight >= 400).length')

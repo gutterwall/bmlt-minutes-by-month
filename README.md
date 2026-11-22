@@ -11,5 +11,6 @@ bin/install-wp-tests.sh wordpress_test user pass 127.0.0.1   # empties that data
 WP_TESTS_DIR=/tmp/wordpress-tests/tests-lib vendor/bin/phpunit -c tests/wordpress/phpunit.xml.dist
 WP_MULTISITE=1 WP_TESTS_DIR=… vendor/bin/phpunit -c tests/wordpress/phpunit.xml.dist
 vendor/bin/phpcs && vendor/bin/phpstan analyse --memory-limit=2G
+bin/browser-check.py <site> <page url> <user> <password> [shot.png]   # headless Chrome: open month, lazy PDFs
 bin/build.sh                                    # dist/bmlt-minutes-by-month-<version>.zip from the last commit
 ```
