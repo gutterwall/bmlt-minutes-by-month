@@ -276,8 +276,8 @@ class ShortcodeTest extends WP_UnitTestCase {
 			$this->assertSame( 'application/pdf', $embed->getAttribute( 'type' ) );
 			$this->assertSame( 'width:100%;height:500px', $embed->getAttribute( 'style' ) );
 			$this->assertStringContainsString( 'wp-block-file__embed', $embed->getAttribute( 'class' ) );
-			// WordPress rendered the block: its script hides the preview where PDFs cannot be shown (phones).
-			$this->assertTrue( $embed->hasAttribute( 'hidden' ) );
+			// WordPress rendered the block: its script hides the preview where PDFs cannot be shown (phones). (WordPress
+			// 6.6 and later also add "hidden" until the script runs.)
 			$this->assertSame( '!state.hasPdfPreview', $embed->getAttribute( 'data-wp-bind--hidden' ) );
 			$this->assertSame( 'core/file', $embed->parentNode->getAttribute( 'data-wp-interactive' ) );
 		}
@@ -331,7 +331,8 @@ class ShortcodeTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( '&lt;script&gt;alert(1)&lt;/script&gt;Minutes', $html );
 		$this->assertStringContainsString( 'Policy &lt;img src=x onerror=alert(1)&gt;', $html );
 		$this->assertStringContainsString( '&gt;&lt;script&gt;alert(2)&lt;/script&gt;</a>', $html, 'File block link' );
-		$this->assertStringContainsString( 'aria-label="Embed of “&gt;."', $html, 'File block preview label (tags stripped)' );
+		// The curly quote is a character or, before WordPress 6.6, an entity.
+		$this->assertMatchesRegularExpression( '/aria-label="Embed of (“|&#8220;)&gt;\."/', $html, 'File block preview label (tags stripped)' );
 		// An address that is not a safe URL links to the minutes' own page instead.
 		$this->assertStringContainsString( 'href="' . esc_url( get_permalink( $id ) ) . '"', $html );
 		$this->assertStringNotContainsString( 'href=""', $html );

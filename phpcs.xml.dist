@@ -10,7 +10,7 @@
 	<arg value="sp"/>
 
 	<config name="testVersion" value="8.0-"/>
-	<config name="minimum_wp_version" value="6.0"/>
+	<config name="minimum_wp_version" value="6.5"/>
 
 	<rule ref="Generic.PHP.Syntax"/>
 	<rule ref="PHPCompatibilityWP"/>

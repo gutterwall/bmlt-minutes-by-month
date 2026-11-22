@@ -1,7 +1,7 @@
 === BMLT Minutes by Month ===
 Contributors: gutterwall
 Tags: meeting minutes, bmlt, archive, shortcode
-Requires at least: 6.0
+Requires at least: 6.5
 Tested up to: 7.1
 Requires PHP: 8.0
 Requires Plugins: bmlt-minutes
