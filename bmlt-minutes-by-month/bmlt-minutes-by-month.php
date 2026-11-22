@@ -3,7 +3,7 @@
  * Plugin Name: BMLT Minutes by Month
  * Description: Adds the [bmlt_minutes_by_month] shortcode: BMLT Minutes listed by committee, then by year and month.
  * Plugin URI: https://github.com/gutterwall/bmlt-minutes-by-month
- * Version: 1.0.0
+ * Version: 1.1.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
  * Requires Plugins: bmlt-minutes
@@ -11,7 +11,7 @@
  * License: GPL-2.0-or-later
  * Text Domain: bmlt-minutes-by-month
  *
- * @version 1.0.0
+ * @version 1.1.0
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
@@ -28,7 +28,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  */
 final class BMLT_Minutes_By_Month {
 
-	public const VERSION   = '1.0.0';
+	public const VERSION   = '1.1.0';
 	public const SHORTCODE = 'bmlt_minutes_by_month';
 	public const STYLE     = 'bmlt-minutes-by-month';
 	public const SCRIPT    = 'bmlt-minutes-by-month';
@@ -50,7 +50,7 @@ final class BMLT_Minutes_By_Month {
 	 * The shortcode attributes, checked. Anything unrecognised falls back to the default.
 	 *
 	 * @param mixed $atts Attributes as WordPress passes them ('' when there are none).
-	 * @return array{committees: string[], date: string, year: int, order: string, open: string, level: int, show_date: bool, display: string, preview: int}
+	 * @return array{committees: string[], date: string, year: int, order: string, open: string, level: int, show_date: bool, display: string, excerpt: bool, preview: int}
 	 */
 	public static function parse_atts( $atts ): array {
 		$a = shortcode_atts(
@@ -62,7 +62,8 @@ final class BMLT_Minutes_By_Month {
 				'open'          => 'latest',
 				'heading_level' => '3',
 				'show_date'     => 'true',
-				'display'       => 'file',
+				'show_excerpt'  => 'false',
+				'display'       => '',
 				'preview_height' => '500',
 			),
 			is_array( $atts ) ? $atts : array(),
@@ -73,6 +74,8 @@ final class BMLT_Minutes_By_Month {
 		$open  = strtolower( trim( (string) $a['open'] ) );
 		$level   = (int) $a['heading_level'];
 		$preview = trim( (string) $a['preview_height'] );
+		$excerpt = true === filter_var( $a['show_excerpt'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE );
+		$display = strtolower( trim( (string) $a['display'] ) );
 
 		return array(
 			'committees' => array_values( array_unique( array_filter( array_map( 'sanitize_title', explode( ',', (string) $a['committee'] ) ) ) ) ),
@@ -83,7 +86,11 @@ final class BMLT_Minutes_By_Month {
 			// The committee heading takes this level, the year one below it and the month one below that.
 			'level'      => $level >= 2 && $level <= 4 ? $level : 3,
 			'show_date'  => false !== filter_var( $a['show_date'], FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE ),
-			'display'    => 'list' === strtolower( trim( (string) $a['display'] ) ) ? 'list' : 'file',
+			// Documents show as File blocks only with show_excerpt="true", as in BMLT Minutes' own list; otherwise as links.
+			// display="file" or "list", from 1.0, still chooses either way.
+			'display'    => in_array( $display, array( 'file', 'list' ), true ) ? $display : ( $excerpt ? 'file' : 'list' ),
+			// The minutes' own excerpt, when they have one, under each document.
+			'excerpt'    => $excerpt,
 			// PDF preview height in pixels; 0 shows no previews.
 			'preview'    => ctype_digit( $preview ) && (int) $preview <= 5000 ? (int) $preview : 500,
 		);
@@ -321,7 +328,7 @@ final class BMLT_Minutes_By_Month {
 
 	/**
 	 * @param list<array{id: int, label: string, years: array<string, array<string, WP_Post[]>>}> $groups Grouped minutes.
-	 * @param array{open: string, level: int, show_date: bool, display: string, preview: int} $args Parsed attributes.
+	 * @param array{open: string, level: int, show_date: bool, display: string, excerpt: bool, preview: int} $args Parsed attributes.
 	 */
 	private static function render( array $groups, array $args ): string {
 		global $wp_locale;
@@ -366,7 +373,7 @@ final class BMLT_Minutes_By_Month {
 	 * password-protected minutes) as a link in BMLT Minutes' list style.
 	 *
 	 * @param WP_Post[] $posts The month's minutes.
-	 * @param array{show_date: bool, display: string, preview: int} $args Parsed attributes.
+	 * @param array{show_date: bool, display: string, excerpt: bool, preview: int} $args Parsed attributes.
 	 * @param bool      $open  Whether the month starts open (closed months load their PDF previews when opened).
 	 */
 	private static function render_month( array $posts, array $args, bool $open ): string {
@@ -375,7 +382,7 @@ final class BMLT_Minutes_By_Month {
 		foreach ( $posts as $post ) {
 			$block = 'file' === $args['display'] ? self::render_file_block( $post, $args, $open ) : '';
 			if ( '' === $block ) {
-				$list .= self::render_item( $post, $args['show_date'] );
+				$list .= self::render_item( $post, $args['show_date'], $args['excerpt'] );
 				continue;
 			}
 			if ( '' !== $list ) {
@@ -395,7 +402,7 @@ final class BMLT_Minutes_By_Month {
 	 * with it): the title linking to the file and a Download button, and for a PDF an embedded preview. Returns '' when
 	 * the minutes have no file of a document type (BMLT_Minutes::ALLOWED_EXTENSIONS) or are password-protected.
 	 *
-	 * @param array{show_date: bool, preview: int} $args Parsed attributes.
+	 * @param array{show_date: bool, excerpt: bool, preview: int} $args Parsed attributes.
 	 * @param bool                                 $load Whether the PDF preview loads with the page.
 	 */
 	private static function render_file_block( WP_Post $post, array $args, bool $load ): string {
@@ -430,6 +437,9 @@ final class BMLT_Minutes_By_Month {
 				$out .= '<p class="bmbm__doc-date">' . esc_html( $date ) . '</p>';
 			}
 		}
+		if ( $args['excerpt'] ) {
+			$out .= self::excerpt( $post );
+		}
 		$out .= render_block(
 			array(
 				'blockName'    => 'core/file',
@@ -446,6 +456,18 @@ final class BMLT_Minutes_By_Month {
 	}
 
 	/**
+	 * The minutes' excerpt, as BMLT Minutes shows it with show_excerpt="true", or '' when they have none or are
+	 * password-protected.
+	 */
+	private static function excerpt( WP_Post $post ): string {
+		if ( post_password_required( $post ) ) {
+			return '';
+		}
+		$text = trim( (string) get_the_excerpt( $post ) );
+		return '' !== $text ? '<div class="bmlt-minutes__excerpt bmbm__excerpt">' . esc_html( $text ) . '</div>' : '';
+	}
+
+	/**
 	 * The minutes' meeting date in the site's date format, or ''.
 	 */
 	private static function meeting_date( WP_Post $post ): string {
@@ -457,7 +479,7 @@ final class BMLT_Minutes_By_Month {
 	 * One document, marked up like BMLT Minutes' own list. Password-protected minutes link to their page (where
 	 * WordPress asks for the password) and never reveal the document's address or type.
 	 */
-	private static function render_item( WP_Post $post, bool $show_date ): string {
+	private static function render_item( WP_Post $post, bool $show_date, bool $excerpt = false ): string {
 		$locked = post_password_required( $post );
 		if ( $locked ) {
 			$href     = (string) get_permalink( $post );
@@ -484,7 +506,11 @@ final class BMLT_Minutes_By_Month {
 		if ( '' !== $date ) {
 			$out .= '<span class="bmlt-minutes__date">' . esc_html( $date ) . '</span>';
 		}
-		return $out . '</a></li>';
+		$out .= '</a>';
+		if ( $excerpt ) {
+			$out .= self::excerpt( $post );
+		}
+		return $out . '</li>';
 	}
 
 	/**

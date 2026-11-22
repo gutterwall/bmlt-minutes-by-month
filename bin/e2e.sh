@@ -5,7 +5,7 @@
 #     ├─ Apache + PHP-FPM
 #     └─ nginx + PHP-FPM
 #   minutes with uploaded PDF, DOCX and CSV files, a Google Docs link and password-protected minutes, in two committees
-#   and several months, on a published page with [bmlt_minutes_by_month]
+#   and several months, on a published page with [bmlt_minutes_by_month show_excerpt="true"] (and one without the flag)
 #   headless Chrome as a visitor, on a desktop and on a phone (bin/browser-check.py)
 #
 # Then the page's HTML (no protected document's address) and uninstall (nothing left behind).
@@ -249,7 +249,8 @@ minutes "ASC January 2025" 2025-01-12 area-service-committee asc-2025-01.pdf >/d
 minutes "ASC November 2024" 2024-11-10 area-service-committee asc-2024-11.pdf >/dev/null
 minutes "Motions November 2024" 2024-11-10 area-service-committee asc-2024-11-motions.csv >/dev/null
 minutes "Policy February 2025" 2025-02-02 policy policy-2025-02.pdf >/dev/null
-"${WP[@]}" post create --post_type=page --post_status=publish --post_title='Minutes by Month' --post_name=minutes-by-month --post_content='<!-- wp:shortcode -->[bmlt_minutes_by_month]<!-- /wp:shortcode -->' >/dev/null
+"${WP[@]}" post create --post_type=page --post_status=publish --post_title='Minutes by Month' --post_name=minutes-by-month --post_content='<!-- wp:shortcode -->[bmlt_minutes_by_month show_excerpt="true"]<!-- /wp:shortcode -->' >/dev/null
+"${WP[@]}" post create --post_type=page --post_status=publish --post_title='Minutes as links' --post_name=minutes-as-links --post_content='<!-- wp:shortcode -->[bmlt_minutes_by_month]<!-- /wp:shortcode -->' >/dev/null
 pass "8 minutes (PDF, DOCX, CSV, Google Docs link, password-protected PDF) in two committees; page /minutes-by-month/"
 
 section "The page's HTML (Apache)"
@@ -262,6 +263,11 @@ grep -q 'bmbm__doc--docx' <<<"$HTML" || fail "the Word document is not a File bl
 grep -q 'bmbm__doc--csv' <<<"$HTML" || fail "the CSV file is not a File block"
 grep -q 'wp-block-file' <<<"$HTML" && grep -q 'view.js' <<<"$HTML" || fail "File block or the plugin's script missing"
 pass "two open months (one per committee); DOCX and CSV as File blocks; the protected document's address is not on the page"
+LINKS=$(curl -fsS "$SITE_A/minutes-as-links/")
+grep -q 'wp-block-file' <<<"$LINKS" && fail "File blocks without show_excerpt=\"true\""
+grep -q 'bmlt-minutes__item' <<<"$LINKS" || fail "no links without show_excerpt=\"true\""
+grep -q "$PROTECTED_FILE" <<<"$LINKS" && fail "the protected minutes' document ($PROTECTED_FILE) is on the links page"
+pass "without show_excerpt=\"true\": every document a link, no File blocks"
 
 section "Browser: desktop (Apache)"
 python3 "$ROOT/bin/browser-check.py" "$SITE_A/minutes-by-month/" --shot "$W/logs/desktop-apache.png"

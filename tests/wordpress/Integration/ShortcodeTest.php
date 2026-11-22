@@ -233,7 +233,7 @@ class ShortcodeTest extends WP_UnitTestCase {
 		$this->minutes( 'Sheet', '2026-02-01 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/treasurer.xlsx', 'meeting' => '2026-01-11' ) );
 		$this->minutes( 'Word', '2026-02-02 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/minutes.docx' ) );
 		$this->minutes( 'Google', '2026-02-03 12:00:00', array( 'policy' ), array( 'url' => 'https://docs.google.com/document/d/abc/edit' ) );
-		$html = $this->render();
+		$html = $this->render( 'show_excerpt="true"' );
 		$xp   = $this->xpath( $html );
 
 		// Word and Excel files: the File block's link and Download button, no preview (browsers cannot show them).
@@ -254,18 +254,55 @@ class ShortcodeTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'dashicons-google', $html );
 		$this->assertSame( 1, $xp->query( '//li[@class="bmlt-minutes__item"]' )->length );
 
-		$this->assertStringNotContainsString( 'bmbm__doc-date', $this->render( 'show_date="false"' ) );
-		$list = $this->render( 'display="list"' );
-		$this->assertStringNotContainsString( 'wp-block-file', $list );
-		$this->assertStringContainsString( '<span class="bmlt-minutes__type">XLSX</span>', $list );
-		$this->assertStringContainsString( '<span class="bmlt-minutes__date">January 11, 2026</span>', $list );
+		$this->assertStringNotContainsString( 'bmbm__doc-date', $this->render( 'show_excerpt="true" show_date="false"' ) );
+		$legacy = $this->render( 'display="file"' );
+		$this->assertSame( 2, substr_count( $legacy, '<div class="wp-block-file">' ), 'display="file" from 1.0 still shows File blocks' );
+		$this->assertStringNotContainsString( 'bmlt-minutes__excerpt', $legacy );
+		foreach ( array( '', 'show_excerpt="false"', 'show_excerpt="no-such-value"', 'show_excerpt="true" display="list"' ) as $atts ) {
+			$list = $this->render( $atts );
+			$this->assertStringNotContainsString( 'wp-block-file', $list, $atts );
+			$this->assertSame( 3, substr_count( $list, '<li class="bmlt-minutes__item">' ), $atts );
+			$this->assertStringContainsString( '<span class="bmlt-minutes__type">XLSX</span>', $list, $atts );
+			$this->assertStringContainsString( '<span class="bmlt-minutes__date">January 11, 2026</span>', $list, $atts );
+		}
+	}
+
+	public function test_without_show_excerpt_documents_are_links() {
+		$this->minutes( 'September', '2026-09-14 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/sep.pdf' ) );
+		$html = $this->render();
+		$this->assertStringNotContainsString( 'wp-block-file', $html );
+		$this->assertStringNotContainsString( '<object', $html );
+		$this->assertStringContainsString( '<a class="bmlt-minutes__link" href="https://example.org/sep.pdf" target="_blank" rel="noopener">', $html );
+		$this->assertStringContainsString( '<span class="bmlt-minutes__type">PDF</span>', $html );
+		$this->assertSame( array( '2026-September' ), $this->open_months( $html ), 'months still roll up' );
+		$this->assertFalse( wp_script_is( 'bmlt-minutes-by-month', 'enqueued' ) );
+	}
+
+	public function test_show_excerpt_shows_the_minutes_excerpt() {
+		$file = $this->minutes( 'File', '2026-09-14 12:00:00', array( 'policy' ) );
+		$link = $this->minutes( 'Doc', '2026-09-15 12:00:00', array( 'policy' ), array( 'url' => 'https://docs.google.com/document/d/x/edit' ) );
+		$lock = $this->minutes( 'Locked', '2026-09-16 12:00:00', array( 'policy' ), array( 'password' => 'secret' ) );
+		foreach ( array( $file => 'Budget approved.', $link => 'New GSR orientation.', $lock => 'Hidden summary.' ) as $id => $text ) {
+			wp_update_post(
+				array(
+					'ID'           => $id,
+					'post_excerpt' => $text,
+				)
+			);
+		}
+		$html = $this->render( 'show_excerpt="true"' );
+		$xp   = $this->xpath( $html );
+		$this->assertSame( 'Budget approved.', trim( $xp->query( '//div[contains(@class,"bmbm__doc")]/div[contains(@class,"bmlt-minutes__excerpt")]' )->item( 0 )->textContent ) );
+		$this->assertSame( 'New GSR orientation.', trim( $xp->query( '//li/div[contains(@class,"bmlt-minutes__excerpt")]' )->item( 0 )->textContent ) );
+		$this->assertStringNotContainsString( 'Hidden summary.', $html, 'a password-protected excerpt stays hidden' );
+		$this->assertStringNotContainsString( 'bmlt-minutes__excerpt', $this->render() );
 	}
 
 	public function test_pdf_previews_load_in_the_open_month_and_wait_in_closed_ones() {
 		$this->minutes( 'September', '2026-09-14 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/sep.pdf' ) );
 		$this->minutes( 'August', '2026-08-09 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/aug.pdf' ) );
 		$this->minutes( 'Richmond', '2025-05-01 12:00:00', array( 'richmond' ), array( 'url' => 'https://example.org/rich.pdf' ) );
-		$html = $this->render();
+		$html = $this->render( 'show_excerpt="true"' );
 		$xp   = $this->xpath( $html );
 
 		$this->assertSame( array( '2026-September', '2025-May' ), $this->open_months( $html ), 'each committee\'s newest month (Policy, then Richmond Area)' );
@@ -288,13 +325,13 @@ class ShortcodeTest extends WP_UnitTestCase {
 		$this->assertTrue( wp_script_is( 'bmlt-minutes-by-month', 'enqueued' ) );
 
 		wp_dequeue_script( 'bmlt-minutes-by-month' );
-		$all = $this->render( 'open="all"' );
+		$all = $this->render( 'show_excerpt="true" open="all"' );
 		$this->assertStringNotContainsString( 'data-bmbm-src', $all );
 		$this->assertFalse( wp_script_is( 'bmlt-minutes-by-month', 'enqueued' ), 'nothing waits, so no script' );
 
-		$this->assertStringContainsString( 'height:300px', $this->render( 'preview_height="300"' ) );
-		$this->assertStringContainsString( 'height:500px', $this->render( 'preview_height="tall"' ) );
-		$none = $this->render( 'preview_height="0"' );
+		$this->assertStringContainsString( 'height:300px', $this->render( 'show_excerpt="true" preview_height="300"' ) );
+		$this->assertStringContainsString( 'height:500px', $this->render( 'show_excerpt="true" preview_height="tall"' ) );
+		$none = $this->render( 'show_excerpt="true" preview_height="0"' );
 		$this->assertStringNotContainsString( '<object', $none );
 		$this->assertStringContainsString( 'wp-block-file__button', $none );
 	}
@@ -326,7 +363,7 @@ class ShortcodeTest extends WP_UnitTestCase {
 		wp_cache_delete( $id, 'post_meta' );
 		clean_post_cache( $id );
 		clean_term_cache( self::$c['policy'], 'bmlt_committee' );
-		$html = $this->render();
+		$html = $this->render( 'show_excerpt="true"' );
 
 		$this->assertStringContainsString( '&lt;script&gt;alert(1)&lt;/script&gt;Minutes', $html );
 		$this->assertStringContainsString( 'Policy &lt;img src=x onerror=alert(1)&gt;', $html );
@@ -381,7 +418,8 @@ class ShortcodeTest extends WP_UnitTestCase {
 				'open'       => 'latest',
 				'level'      => 3,
 				'show_date'  => true,
-				'display'    => 'file',
+				'display'    => 'list',
+				'excerpt'    => false,
 				'preview'    => 500,
 			),
 			BMLT_Minutes_By_Month::parse_atts( '' )
