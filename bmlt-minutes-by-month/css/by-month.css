@@ -1,0 +1,52 @@
+/* [bmlt_minutes_by_month]: committee → year (collapsible) → month. Items use BMLT Minutes' own styles. */
+
+.bmbm__committee + .bmbm__committee {
+	margin-top: 2em;
+}
+
+.bmbm__year {
+	margin: 0.5em 0;
+	border: 1px solid #e5e5e5;
+	border-radius: 4px;
+	padding: 0 0.75em;
+}
+
+.bmbm__year[open] {
+	padding-bottom: 0.5em;
+}
+
+.bmbm__year-summary {
+	cursor: pointer;
+	padding: 0.5em 0;
+	list-style-position: inside;
+}
+
+.bmbm__year-summary:focus-visible {
+	outline: 2px solid #2271b1;
+	outline-offset: 2px;
+}
+
+.bmbm__year-title {
+	display: inline;
+	margin: 0;
+	font-size: 1.05em;
+}
+
+.bmbm__count {
+	margin-left: 0.5em;
+	font-size: 0.85em;
+	color: #777;
+}
+
+.bmbm__month {
+	margin: 0.75em 0 0.25em;
+	font-size: 0.95em;
+	font-weight: 600;
+	color: #444;
+}
+
+.bmbm--missing {
+	padding: 1em;
+	border-left: 4px solid #d63638;
+	background: #fcf0f1;
+}

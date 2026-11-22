@@ -1,0 +1,300 @@
+<?php
+/**
+ * [bmlt_minutes_by_month] rendered through do_shortcode(), with BMLT Minutes' real post type, committees and meta.
+ */
+
+class ShortcodeTest extends WP_UnitTestCase {
+
+	/** @var array<string, int> Committee term ids by slug. */
+	private static $c = array();
+
+	public static function wpSetUpBeforeClass( WP_UnitTest_Factory $factory ) {
+		$add = static function ( string $name, string $slug, int $parent = 0 ): int {
+			$t = wp_insert_term( $name, 'bmlt_committee', array( 'slug' => $slug, 'parent' => $parent ) );
+			return (int) $t['term_id'];
+		};
+		self::$c['asc']       = $add( 'Area Service Committee', 'asc' );
+		self::$c['richmond']  = $add( 'Richmond Area', 'richmond', self::$c['asc'] );
+		self::$c['ndana']     = $add( 'New Dominion Area', 'ndana', self::$c['asc'] );
+		self::$c['rich-pr']   = $add( 'Public Relations', 'rich-pr', self::$c['richmond'] );
+		self::$c['ndana-pr']  = $add( 'Public Relations', 'ndana-pr', self::$c['ndana'] );
+		self::$c['policy']    = $add( 'Policy', 'policy' );
+	}
+
+	public function set_up() {
+		parent::set_up();
+		delete_option( 'bmlt_minutes_sort_order' );
+	}
+
+	/**
+	 * A published minutes post.
+	 *
+	 * @param string   $title      Title.
+	 * @param string   $posted     Post date (Y-m-d H:i:s).
+	 * @param string[] $committees Committee slugs.
+	 * @param array    $extra      meeting (Y-m-d), url, status, password.
+	 */
+	private function minutes( string $title, string $posted, array $committees, array $extra = array() ): int {
+		$id = self::factory()->post->create(
+			array(
+				'post_type'     => 'bmlt_minutes',
+				'post_title'    => $title,
+				'post_status'   => $extra['status'] ?? 'publish',
+				'post_date'     => $posted,
+				'post_password' => $extra['password'] ?? '',
+			)
+		);
+		wp_set_object_terms( $id, array_map( static fn( $s ) => self::$c[ $s ], $committees ), 'bmlt_committee' );
+		if ( isset( $extra['meeting'] ) ) {
+			update_post_meta( $id, '_bmlt_minutes_date', $extra['meeting'] );
+		}
+		update_post_meta( $id, '_bmlt_minutes_url', $extra['url'] ?? 'https://example.org/' . sanitize_title( $title ) . '.pdf' );
+		return $id;
+	}
+
+	private function render( string $atts = '' ): string {
+		return do_shortcode( '[bmlt_minutes_by_month' . ( '' !== $atts ? ' ' . $atts : '' ) . ']' );
+	}
+
+	/**
+	 * Committee → year → month → titles, read back from the HTML.
+	 *
+	 * @return array<string, array<string, array<string, string[]>>>
+	 */
+	private function outline( string $html ): array {
+		$doc = new DOMDocument();
+		libxml_use_internal_errors( true );
+		$doc->loadHTML( '<?xml encoding="utf-8"?>' . $html );
+		libxml_clear_errors();
+		$xp  = new DOMXPath( $doc );
+		$out = array();
+		foreach ( $xp->query( '//section[contains(@class,"bmbm__committee")]' ) as $section ) {
+			$committee = trim( $xp->query( './*[contains(@class,"bmbm__committee-title")]', $section )->item( 0 )->textContent );
+			foreach ( $xp->query( './details', $section ) as $details ) {
+				$year  = trim( $xp->query( './/*[contains(@class,"bmbm__year-title")]', $details )->item( 0 )->textContent );
+				$month = '';
+				foreach ( $xp->query( './*', $details ) as $node ) {
+					if ( str_contains( (string) $node->getAttribute( 'class' ), 'bmbm__month' ) ) {
+						$month = trim( $node->textContent );
+					} elseif ( 'ul' === $node->nodeName ) {
+						foreach ( $xp->query( './/span[@class="bmlt-minutes__title"]', $node ) as $title ) {
+							$out[ $committee ][ $year ][ $month ][] = trim( $title->textContent );
+						}
+					}
+				}
+			}
+		}
+		return $out;
+	}
+
+	public function test_groups_by_committee_then_year_and_month_posted_newest_first() {
+		$this->minutes( 'Richmond Sep', '2026-09-14 12:00:00', array( 'richmond' ) );
+		$this->minutes( 'Richmond Aug', '2026-08-09 12:00:00', array( 'richmond' ) );
+		$this->minutes( 'Richmond Aug report', '2026-08-09 13:00:00', array( 'richmond' ) );
+		$this->minutes( 'Richmond 2025', '2025-10-12 12:00:00', array( 'richmond' ) );
+		$this->minutes( 'Policy Jan', '2026-01-11 12:00:00', array( 'policy' ) );
+
+		$this->assertSame(
+			array(
+				'Policy'        => array( '2026' => array( 'January' => array( 'Policy Jan' ) ) ),
+				'Richmond Area' => array(
+					'2026' => array(
+						'September' => array( 'Richmond Sep' ),
+						'August'    => array( 'Richmond Aug report', 'Richmond Aug' ),
+					),
+					'2025' => array( 'October' => array( 'Richmond 2025' ) ),
+				),
+			),
+			$this->outline( $this->render() )
+		);
+	}
+
+	public function test_order_asc_and_the_bmlt_minutes_default_order_setting() {
+		$this->minutes( 'A', '2025-03-01 12:00:00', array( 'policy' ) );
+		$this->minutes( 'B', '2026-02-01 12:00:00', array( 'policy' ) );
+		$this->minutes( 'C', '2026-05-01 12:00:00', array( 'policy' ) );
+		$asc = array( 'Policy' => array( '2025' => array( 'March' => array( 'A' ) ), '2026' => array( 'February' => array( 'B' ), 'May' => array( 'C' ) ) ) );
+
+		$this->assertSame( $asc, $this->outline( $this->render( 'order="asc"' ) ) );
+		update_option( 'bmlt_minutes_sort_order', 'asc' );
+		$this->assertSame( $asc, $this->outline( $this->render() ), 'BMLT Minutes\' default sort order applies' );
+		$this->assertSame( array( 2026, 2025 ), array_keys( $this->outline( $this->render( 'order="desc"' ) )['Policy'] ) );
+	}
+
+	public function test_meeting_date_groups_by_meeting_and_falls_back_to_posting_date() {
+		// Posted in September for an August meeting, as most minutes are.
+		$this->minutes( 'August meeting', '2026-09-05 20:00:00', array( 'policy' ), array( 'meeting' => '2026-08-09' ) );
+		$this->minutes( 'No meeting date', '2026-07-01 12:00:00', array( 'policy' ) );
+		$bad = $this->minutes( 'Bad meeting date', '2026-06-01 12:00:00', array( 'policy' ) );
+		// BMLT Minutes cleans dates it saves; older or imported data may still hold one that is not a date.
+		global $wpdb;
+		$wpdb->insert( $wpdb->postmeta, array( 'post_id' => $bad, 'meta_key' => '_bmlt_minutes_date', 'meta_value' => '2026-02-31' ) );
+		wp_cache_delete( $bad, 'post_meta' );
+
+		$this->assertSame(
+			array( 'Policy' => array( '2026' => array( 'September' => array( 'August meeting' ), 'July' => array( 'No meeting date' ), 'June' => array( 'Bad meeting date' ) ) ) ),
+			$this->outline( $this->render() ),
+			'default: the month it was posted'
+		);
+		$this->assertSame(
+			array( 'Policy' => array( '2026' => array( 'August' => array( 'August meeting' ), 'July' => array( 'No meeting date' ), 'June' => array( 'Bad meeting date' ) ) ) ),
+			$this->outline( $this->render( 'date="meeting"' ) )
+		);
+	}
+
+	public function test_year_filter_uses_the_chosen_date() {
+		$this->minutes( 'Dec meeting', '2026-01-04 12:00:00', array( 'policy' ), array( 'meeting' => '2025-12-14' ) );
+		$this->minutes( 'Old', '2025-05-01 12:00:00', array( 'policy' ) );
+
+		$this->assertSame( array( 'Policy' => array( '2026' => array( 'January' => array( 'Dec meeting' ) ) ) ), $this->outline( $this->render( 'year="2026"' ) ) );
+		$this->assertSame( array( 'Policy' => array( '2025' => array( 'December' => array( 'Dec meeting' ), 'May' => array( 'Old' ) ) ) ), $this->outline( $this->render( 'year="2025" date="meeting"' ) ) );
+		$this->assertStringContainsString( 'No minutes published yet.', $this->render( 'year="1999"' ) );
+		$this->assertCount( 1, $this->outline( $this->render( 'year="20x6"' ) ), 'an invalid year is ignored' );
+	}
+
+	public function test_committee_filter_includes_sub_committees_and_unknown_shows_nothing() {
+		$this->minutes( 'Area', '2026-03-01 12:00:00', array( 'asc' ) );
+		$this->minutes( 'Richmond', '2026-03-02 12:00:00', array( 'richmond' ) );
+		$this->minutes( 'Richmond PR', '2026-03-03 12:00:00', array( 'rich-pr' ) );
+		$this->minutes( 'NDANA', '2026-03-04 12:00:00', array( 'ndana' ) );
+		$this->minutes( 'Policy', '2026-03-05 12:00:00', array( 'policy' ) );
+
+		$this->assertSame( array( 'Public Relations', 'Richmond Area' ), array_keys( $this->outline( $this->render( 'committee="richmond"' ) ) ) );
+		$this->assertSame( array( 'New Dominion Area', 'Policy' ), array_keys( $this->outline( $this->render( 'committee="ndana, policy"' ) ) ) );
+		$this->assertCount( 5, $this->outline( $this->render( 'committee="asc,policy"' ) ) );
+		$this->assertStringContainsString( 'No minutes published yet.', $this->render( 'committee="no-such-committee"' ) );
+	}
+
+	public function test_minutes_in_two_committees_are_listed_under_each_and_uncategorized_last() {
+		$this->minutes( 'Shared', '2026-04-12 12:00:00', array( 'ndana', 'policy' ) );
+		$this->minutes( 'Loose', '2026-04-13 12:00:00', array() );
+
+		$outline = $this->outline( $this->render() );
+		$this->assertSame( array( 'New Dominion Area', 'Policy', 'Uncategorized' ), array_keys( $outline ) );
+		$this->assertSame( array( 'Shared' ), $outline['Policy']['2026']['April'] );
+		$this->assertSame( array( 'Shared' ), $outline['New Dominion Area']['2026']['April'] );
+
+		$filtered = $this->outline( $this->render( 'committee="policy"' ) );
+		$this->assertSame( array( 'Policy' ), array_keys( $filtered ), 'only the filtered committee, no Uncategorized' );
+	}
+
+	public function test_committees_with_the_same_name_show_their_path() {
+		$this->minutes( 'R', '2026-02-01 12:00:00', array( 'rich-pr' ) );
+		$this->minutes( 'N', '2026-02-01 12:00:00', array( 'ndana-pr' ) );
+		$this->minutes( 'P', '2026-02-01 12:00:00', array( 'policy' ) );
+
+		$this->assertSame(
+			array( 'Area Service Committee / New Dominion Area / Public Relations', 'Area Service Committee / Richmond Area / Public Relations', 'Policy' ),
+			array_keys( $this->outline( $this->render() ) )
+		);
+		// Only one of them listed: the plain name is enough.
+		$this->assertSame( array( 'Public Relations' ), array_keys( $this->outline( $this->render( 'committee="rich-pr"' ) ) ) );
+	}
+
+	public function test_only_published_minutes() {
+		$this->minutes( 'Published', '2026-02-01 12:00:00', array( 'policy' ) );
+		$this->minutes( 'Draft', '2026-02-02 12:00:00', array( 'policy' ), array( 'status' => 'draft' ) );
+		$this->minutes( 'Private', '2026-02-03 12:00:00', array( 'policy' ), array( 'status' => 'private' ) );
+		self::factory()->post->create( array( 'post_title' => 'A blog post', 'post_date' => '2026-02-04 12:00:00' ) );
+
+		$this->assertSame( array( 'Policy' => array( '2026' => array( 'February' => array( 'Published' ) ) ) ), $this->outline( $this->render() ) );
+	}
+
+	public function test_password_protected_minutes_do_not_reveal_the_document() {
+		$id   = $this->minutes( 'Unredacted', '2026-02-01 12:00:00', array( 'policy' ), array( 'password' => 'secret', 'url' => 'https://example.org/private-minutes.pdf' ) );
+		$html = $this->render();
+
+		$this->assertStringNotContainsString( 'private-minutes', $html );
+		$this->assertStringNotContainsString( '>PDF<', $html );
+		$this->assertStringContainsString( 'href="' . esc_url( get_permalink( $id ) ) . '"', $html );
+		$this->assertStringContainsString( 'bmlt-minutes__item--locked', $html );
+		$this->assertStringContainsString( 'Protected', $html );
+	}
+
+	public function test_document_link_type_and_meeting_date() {
+		update_option( 'date_format', 'F j, Y' );
+		$this->minutes( 'Sheet', '2026-02-01 12:00:00', array( 'policy' ), array( 'url' => 'https://example.org/treasurer.xlsx', 'meeting' => '2026-01-11' ) );
+		$this->minutes( 'Google', '2026-02-02 12:00:00', array( 'policy' ), array( 'url' => 'https://docs.google.com/document/d/abc/edit' ) );
+		$html = $this->render();
+
+		$this->assertStringContainsString( 'href="https://example.org/treasurer.xlsx" target="_blank" rel="noopener"', $html );
+		$this->assertStringContainsString( 'dashicons-media-spreadsheet', $html );
+		$this->assertStringContainsString( '<span class="bmlt-minutes__type">XLSX</span>', $html );
+		$this->assertStringContainsString( '<span class="bmlt-minutes__date">January 11, 2026</span>', $html );
+		$this->assertStringContainsString( 'dashicons-google', $html );
+		$this->assertStringNotContainsString( 'bmlt-minutes__date', $this->render( 'show_date="false"' ) );
+	}
+
+	public function test_titles_and_committee_names_are_escaped() {
+		$id = $this->minutes( 'Minutes', '2026-02-01 12:00:00', array( 'policy' ) );
+		// Written to the database directly: WordPress filters markup out of titles and names it saves, but imported
+		// data or an administrator with unfiltered_html can still hold it.
+		global $wpdb;
+		$wpdb->update( $wpdb->posts, array( 'post_title' => '<script>alert(1)</script>Minutes' ), array( 'ID' => $id ) );
+		$wpdb->update( $wpdb->terms, array( 'name' => 'Policy <img src=x onerror=alert(1)>' ), array( 'term_id' => self::$c['policy'] ) );
+		$wpdb->update( $wpdb->postmeta, array( 'meta_value' => 'javascript:alert(1)' ), array( 'post_id' => $id, 'meta_key' => '_bmlt_minutes_url' ) );
+		wp_cache_delete( $id, 'post_meta' );
+		clean_post_cache( $id );
+		clean_term_cache( self::$c['policy'], 'bmlt_committee' );
+		$html = $this->render();
+
+		$this->assertStringContainsString( '&lt;script&gt;alert(1)&lt;/script&gt;Minutes', $html );
+		$this->assertStringContainsString( 'Policy &lt;img src=x onerror=alert(1)&gt;', $html );
+		$this->assertStringNotContainsString( '<script>', $html );
+		$this->assertStringNotContainsString( '<img', $html );
+		$this->assertStringNotContainsString( 'javascript:', $html );
+		$wpdb->update( $wpdb->terms, array( 'name' => 'Policy' ), array( 'term_id' => self::$c['policy'] ) );
+		clean_term_cache( self::$c['policy'], 'bmlt_committee' );
+	}
+
+	public function test_open_attribute_and_heading_levels() {
+		$this->minutes( 'New', '2026-02-01 12:00:00', array( 'policy' ) );
+		$this->minutes( 'Old', '2025-02-01 12:00:00', array( 'policy' ) );
+		$this->minutes( 'Richmond', '2024-02-01 12:00:00', array( 'richmond' ) );
+
+		// Newest year of each committee open.
+		$this->assertSame( 2, substr_count( $this->render(), '<details class="bmbm__year" open>' ) );
+		$this->assertSame( 3, substr_count( $this->render( 'open="all"' ), '<details class="bmbm__year" open>' ) );
+		$this->assertSame( 0, substr_count( $this->render( 'open="none"' ), ' open>' ) );
+		$this->assertSame( 2, substr_count( $this->render( 'open="bogus"' ), ' open>' ) );
+
+		$html = $this->render( 'heading_level="2"' );
+		$this->assertStringContainsString( '<h2 class="bmlt-minutes__group bmbm__committee-title">Policy</h2>', $html );
+		$this->assertStringContainsString( '<h3 class="bmbm__year-title">2026</h3>', $html );
+		$this->assertStringContainsString( '<h4 class="bmbm__month">February</h4>', $html );
+		$this->assertStringContainsString( '<h3 class="bmlt-minutes__group', $this->render( 'heading_level="9"' ), 'out of range: the default' );
+		$this->assertStringContainsString( '1 document</span>', $this->render() );
+	}
+
+	public function test_month_names_follow_the_site_language() {
+		global $wp_locale;
+		$this->minutes( 'M', '2026-03-01 12:00:00', array( 'policy' ) );
+		$saved                     = $wp_locale->month['03'];
+		$wp_locale->month['03']    = 'Mars';
+		try {
+			$this->assertArrayHasKey( 'Mars', $this->outline( $this->render() )['Policy']['2026'] );
+		} finally {
+			$wp_locale->month['03'] = $saved;
+		}
+	}
+
+	public function test_empty_and_styles() {
+		$this->assertStringContainsString( 'No minutes published yet.', $this->render() );
+		$this->assertTrue( wp_style_is( 'bmlt-minutes-by-month', 'enqueued' ) );
+	}
+
+	public function test_parse_atts_defaults() {
+		$this->assertSame(
+			array(
+				'committees' => array(),
+				'date'       => 'posted',
+				'year'       => 0,
+				'order'      => 'desc',
+				'open'       => 'latest',
+				'level'      => 3,
+				'show_date'  => true,
+			),
+			BMLT_Minutes_By_Month::parse_atts( '' )
+		);
+	}
+}
