@@ -2,6 +2,7 @@
 /**
  * Plugin Name: BMLT Minutes by Month
  * Description: Adds the [bmlt_minutes_by_month] shortcode: BMLT Minutes listed by committee, then by year and month.
+ * Plugin URI: https://github.com/gutterwall/bmlt-minutes-by-month
  * Version: 1.0.0
  * Requires at least: 6.5
  * Requires PHP: 8.0
